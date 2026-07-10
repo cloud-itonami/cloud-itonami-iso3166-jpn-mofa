@@ -1,3 +1,13 @@
 ;; Real-world organization location / contact.
 ;; :head-role is institutional title only — no personal names.
-{:contact-page "https://www.mofa.go.jp/", :ooyake-id "gov.jpn.mofa", :sourced-from "com-etzhayyim-ooyake gov-units (verbatim where present)", :head-role-note "institutional office title only; personal names of current office-holders are intentionally NOT stored", :official-url "https://www.mofa.go.jp/", :head-role "外務大臣", :hq {:last-verified "2026-06-02", :phone "03-3580-3311", :line-en "2-2-1 Kasumigaseki, Chiyoda-ku, Tokyo", :line-local "東京都千代田区霞が関2-2-1", :postal-code "100-8919", :kind "headquarters", :provenance "https://www.mofa.go.jp/", :hours "平日 9:30-18:15", :sourcing "representative", :country "jpn"}, :wikidata "Q222241", :name-en "Ministry of Foreign Affairs", :name-local "外務省"}
+{:ooyake-id "gov.jpn.mofa"
+  :official-url "https://www.mofa.go.jp/"
+  :name-en "Ministry of Foreign Affairs"
+  :name-local "外務省"
+  :wikidata "Q222241"
+  :head-role "外務大臣"
+  :head-role-note "institutional office title only; personal names of current office-holders are intentionally NOT stored"
+  :contact-page "https://www.mofa.go.jp/"
+  :sourced-from "com-etzhayyim-ooyake gov-units (verbatim where present)"
+  :hq {:postal-code "100-8919" :line-local "東京都千代田区霞が関2-2-1" :line-en "2-2-1 Kasumigaseki, Chiyoda-ku, Tokyo" :country "jpn" :phone "03-3580-3311" :hours "平日 9:30-18:15" :kind "headquarters" :provenance "https://www.mofa.go.jp/" :last-verified "2026-06-02" :sourcing "representative"}
+}
