@@ -1,0 +1,250 @@
+#!/usr/bin/env nbb
+;; Re-checks every source in facts.edn against the live authority.
+;;
+;;   nbb scripts/verify-facts.cljs                (from the repository root)
+;;   nbb scripts/verify-facts.cljs --facts <path>
+;;
+;; Three exit codes, on purpose:
+;;   0  every source checked out
+;;   1  a source did not check out          -- the register is wrong
+;;   2  the run could not answer            -- NOT a pass
+;;
+;; 2 exists because a check that could not run must not return the same value as
+;; a check that ran and found nothing. Unreadable facts.edn, a source that could
+;; not be reached, an empty register, or a self-test that did not discriminate
+;; are all 2, and all of them print REFUSED.
+;;
+;; THE TWO CHECKS ARE NOT INTERCHANGEABLE.
+;;
+;;   :http-2xx      Fetch and require 2xx. Sound for www.mofa.go.jp and
+;;                  www.jica.go.jp, measured 2026-08-26 to answer a real 404
+;;                  for a missing page.
+;;
+;;   :e-gov-law-id  Resolve the id through the e-Gov law API and require the
+;;                  title and law number to match the register. HTTP status is
+;;                  never consulted here: laws.e-gov.go.jp answers 200 for
+;;                  /law/<anything>, including ids that do not exist. A
+;;                  status-only check would have passed 322CO0000000165, which
+;;                  is not a law.
+;;
+;;                  It deliberately does NOT assert current_revision_status.
+;;                  That field describes the revision the endpoint happened to
+;;                  return, not the law: 不正競争防止法 comes back
+;;                  PreviousEnforced from `laws?law_id=` while `law_revisions`
+;;                  shows a CurrentEnforced one. Asserting it would fail a real
+;;                  citation for a reason unrelated to whether it is real.
+;;
+;; SELF-TEST. Before reporting anything, the run asks the law API about an id
+;; that does not exist and requires the answer to be specifically "no such law".
+;; Without that, a green run is compatible with the branch having degraded into
+;; "the API answered, therefore fine" -- the failure the branch exists to
+;; prevent. If the self-test does not discriminate, the run exits 2 and reports
+;; nothing about the register.
+;;
+;; It asserts the REASON, not the verdict. The first version of this self-test
+;; ran the whole check with placeholder title and number, and accepted any
+;; :fail -- so it passed on 会計法, a real law, because the check failed on
+;; title drift instead. A negative test that only asserts the outcome counts a
+;; run that failed for an unrelated reason as a discriminating one. It now
+;; calls egov-lookup and requires :missing.
+;;
+;; WHY fetch AND NOT curl. www.mofa.go.jp answers 403 to curl over both HTTP/2
+;; and HTTP/1.1, with or without a browser User-Agent, while answering 200 with
+;; full content to fetch at the same moment -- the block is on the TLS
+;; fingerprint. A curl-based verifier would record this repository's own
+;; naming authority as permanently unreachable and look like it had measured
+;; that. It had measured its own client.
+
+(ns verify-facts
+  (:require [clojure.edn :as edn]
+            [clojure.string :as str]
+            [promesa.core :as p]
+            ["fs" :as fs]
+            ["process" :as process]))
+
+(def argv (vec (drop 2 (js->clj (.-argv process)))))
+
+(defn- arg [flag default]
+  (let [i (.indexOf (into-array argv) flag)]
+    (if (and (>= i 0) (< (inc i) (count argv))) (nth argv (inc i)) default)))
+
+(def facts-path (arg "--facts" "facts.edn"))
+
+(def UA (str "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+             " (KHTML, like Gecko) Chrome/126 Safari/537.36"))
+(def TIMEOUT-MS 25000)
+
+;; An id that must never resolve. Used only by the self-test; it is not a
+;; citation and is deliberately not in facts.edn.
+(def NONEXISTENT-LAW-ID "999ZZ9999999999")
+
+(defn- die! [code msg]
+  (println msg)
+  (.exit process code))
+
+(defn- refuse! [msg]
+  (die! 2 (str "REFUSED\t" msg "\n"
+               "Refusing to report a pass on a run that could not answer.")))
+
+(defn- with-timeout [f]
+  (let [ctrl (js/AbortController.)
+        timer (js/setTimeout #(.abort ctrl) TIMEOUT-MS)]
+    (-> (f (.-signal ctrl))
+        (.then (fn [r] (js/clearTimeout timer) r))
+        (.catch (fn [e] (js/clearTimeout timer) {:error (str (.-message e))})))))
+
+(defn- fetch-status [url]
+  (with-timeout
+    (fn [sig]
+      (.then (js/fetch url #js {:redirect "follow" :signal sig
+                                :headers #js {"User-Agent" UA
+                                              "Accept" "text/html,application/xhtml+xml,*/*;q=0.8"}})
+             (fn [res] {:status (.-status res)})))))
+
+(defn- fetch-json [url]
+  (with-timeout
+    (fn [sig]
+      (.then (js/fetch url #js {:signal sig
+                                :headers #js {"User-Agent" UA "Accept" "application/json"}})
+             (fn [res]
+               (if (.-ok res)
+                 (.then (.json res) (fn [j] {:json (js->clj j :keywordize-keys true)}))
+                 {:error (str "HTTP " (.-status res))}))))))
+
+;; --- checks -------------------------------------------------------------
+
+(defn- egov-lookup
+  "Ask the law API about one id. {:missing true} / {:title .. :num ..} / {:error ..}"
+  [id]
+  (p/let [r (fetch-json (str "https://laws.e-gov.go.jp/api/2/laws?law_id=" id))]
+    (if (:error r)
+      {:error (:error r)}
+      (let [total (:total_count (:json r))
+            hit (first (:laws (:json r)))]
+        (if (or (nil? total) (zero? total) (nil? hit))
+          {:missing true :total total}
+          {:title (get-in hit [:revision_info :law_title])
+           :num (get-in hit [:law_info :law_num])})))))
+
+(defn- check-egov [e]
+  (let [id (:egov/law-id e)]
+    (if (str/blank? (str id))
+      (p/resolved {:verdict :refused :why "tagged :e-gov-law-id but has no :egov/law-id"})
+      (p/let [r (egov-lookup id)]
+        (cond
+          (:error r) {:verdict :refused :why (str "law API unreachable: " (:error r))}
+          (:missing r) {:verdict :fail
+                        :why (str "law id " id " does not exist (total_count "
+                                  (pr-str (:total r))
+                                  ") -- the /law/ URL still answers 200")}
+          (not= (:title r) (:egov/law-title e))
+          {:verdict :fail :why (str "title drift: register " (pr-str (:egov/law-title e))
+                                    " vs API " (pr-str (:title r)))}
+          (not= (:num r) (:egov/law-num e))
+          {:verdict :fail :why (str "law number drift: register " (pr-str (:egov/law-num e))
+                                    " vs API " (pr-str (:num r)))}
+          :else {:verdict :pass :detail (str (:title r) " / " (:num r))})))))
+
+(defn- check-http-2xx [e]
+  (p/let [r (fetch-status (:source/url e))]
+    (cond
+      (:error r) {:verdict :refused :why (str "unreachable: " (:error r))}
+      (<= 200 (:status r) 299) {:verdict :pass :detail (str "HTTP " (:status r))}
+      :else {:verdict :fail :why (str "HTTP " (:status r) ", register recorded "
+                                      (pr-str (:source/http-status e)))})))
+
+(defn- check [e]
+  (case (:source/verify e)
+    :e-gov-law-id (check-egov e)
+    :http-2xx (check-http-2xx e)
+    (p/resolved {:verdict :refused
+                 :why (str "unknown :source/verify " (pr-str (:source/verify e)))})))
+
+;; --- the register's own claims about itself -----------------------------
+
+(defn- coverage-findings [entities sourced]
+  (let [cov (first (filter #(= :coverage (:source/kind %)) entities))]
+    (if-not cov
+      ["facts.edn has no :coverage entity -- it never says what it leaves out"]
+      (let [by (frequencies (map :source/verify sourced))
+            ids (map :source/id sourced)
+            urls (map :source/url sourced)]
+        (cond-> []
+          (not= (:coverage/entries cov) (count sourced))
+          (conj (str ":coverage/entries says " (:coverage/entries cov)
+                     ", file has " (count sourced)))
+          (not= (:coverage/by-verify cov) by)
+          (conj (str ":coverage/by-verify says " (pr-str (:coverage/by-verify cov))
+                     ", file has " (pr-str by)))
+          (not= (count ids) (count (set ids)))
+          (conj "duplicate :source/id -- the join key is not a key")
+          (not= (count urls) (count (set urls)))
+          (conj "duplicate :source/url -- the same source counted twice"))))))
+
+;; --- run ----------------------------------------------------------------
+
+(defn- read-facts []
+  (try (edn/read-string (fs/readFileSync facts-path "utf8"))
+       (catch :default e
+         (refuse! (str "cannot read " facts-path ": " (.-message e))))))
+
+(p/let [;; Self-test first: prove the e-Gov branch still discriminates, and that
+        ;; it does so for the RIGHT reason -- the id not resolving, not some
+        ;; other mismatch that would also produce a red.
+        control (egov-lookup NONEXISTENT-LAW-ID)]
+  (cond
+    (:error control)
+    (refuse! (str "self-test could not run (" (:error control)
+                  "). The e-Gov branch was not shown to work, so nothing below "
+                  "would mean anything."))
+
+    (not (:missing control))
+    (refuse! (str "self-test did not discriminate: id " NONEXISTENT-LAW-ID
+                  " resolved to " (pr-str (:title control)) " / "
+                  (pr-str (:num control)) ", but it must not resolve at all. "
+                  "A pass from this branch is not currently evidence of anything."))
+
+    :else
+    (p/let [_ (println (str "SELF-TEST\tok\t" NONEXISTENT-LAW-ID
+                            " does not resolve (API total_count "
+                            (pr-str (:total control)) ") though its /law/ URL "
+                            "answers HTTP 200"))
+            data (read-facts)]
+      (cond
+        (not (vector? data))
+        (refuse! (str facts-path " is not tx-data (expected a vector of maps)"))
+
+        :else
+        (let [entities (filterv map? data)
+              sourced (filterv :source/url entities)]
+          (if (zero? (count sourced))
+            (refuse! (str facts-path " declares 0 sources. An empty register is "
+                          "not a clean register."))
+            (p/let [results (p/all (mapv (fn [e] (p/let [r (check e)] (assoc r :entity e)))
+                                         sourced))]
+              (let [results (vec results)
+                    by (fn [v] (filterv #(= v (:verdict %)) results))
+                    passed (by :pass) failed (by :fail) refused (by :refused)
+                    cov (coverage-findings entities sourced)]
+                (println (str "SCANNED\t" (count results) "\tof " (count sourced)
+                              " sourced entries in " facts-path))
+                (doseq [r results]
+                  (println (str "  " (str/upper-case (name (:verdict r)))
+                                "\t" (:source/id (:entity r))
+                                "\t" (or (:detail r) (:why r)))))
+                (doseq [f cov] (println (str "  FAIL\tregister.coverage\t" f)))
+                (println (str "pass=" (count passed) " fail=" (count failed)
+                              " refused=" (count refused)
+                              " coverage-findings=" (count cov)))
+                (cond
+                  (or (seq refused) (not= (count results) (count sourced)))
+                  (refuse! (str (count refused) " source(s) could not be reached or carry "
+                                "no usable check. This run does not establish that the "
+                                "register is correct."))
+
+                  (or (seq failed) (seq cov))
+                  (die! 1 (str "FAIL\t" (count failed) " source(s) + " (count cov)
+                               " coverage finding(s)"))
+
+                  :else
+                  (die! 0 (str "OK\t" (count passed) " sources verified")))))))))))

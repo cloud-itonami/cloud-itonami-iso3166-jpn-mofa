@@ -1,0 +1,409 @@
+;; Regulatory source register for JPN-MOFA ODA / JICA tender-eligibility compliance.
+;;
+;; README.md says: "Every regulatory claim must cite the official MOFA source."
+;; Until this file existed there was no such list, so no claim in this
+;; repository could be traced to anything. This is that list.
+;;
+;; Shape is tx-data (a vector of entity maps), like every other EDN corpus in
+;; this workspace, so it loads with
+;;   (d/transact conn (edn/read-string (slurp "facts.edn")))
+;; :source/id is the join key. Follows the catalog convention of
+;; cloud-itonami-iso3166-jpn's src/statute/facts.cljc: a law not in this table
+;; has NO spec-basis for this repository -- extend the table, never invent an
+;; id or a URL.
+;;
+;; VERIFIED BY `nbb scripts/verify-facts.cljs`, which re-fetches every entry.
+;; Each carries a :source/verify tag naming WHICH check establishes it. The two
+;; checks are not interchangeable, and the reason is the main thing this file
+;; has to teach:
+;;
+;;   :http-2xx      Fetch and require 2xx. Sound for www.mofa.go.jp and
+;;                  www.jica.go.jp, which were measured 2026-08-26 to answer a
+;;                  real 404 for a missing page.
+;;
+;;   :e-gov-law-id  Resolve the law id through the e-Gov law API and require the
+;;                  title and law number to still match what is written below.
+;;                  HTTP status is NOT consulted for these and must not be:
+;;                  laws.e-gov.go.jp is a single-page app that answers
+;;                  **HTTP 200 for /law/<anything>**, including ids that do not
+;;                  exist, and renders "not found" client-side. Measured
+;;                  2026-08-26: the invented id 999ZZ9999999999 returns 200 --
+;;                  and so did 322CO0000000165, which is what this register
+;;                  first wrote for 予算決算及び会計令 before the API answered
+;;                  total_count 0. The correct id is 322IO0000000165; 勅令 is
+;;                  IO, not CO. A 200 from this host is not evidence of
+;;                  anything, and the verifier proves its own e-Gov branch can
+;;                  still tell the difference before it reports a pass.
+;;
+;; MEASURING THE SOURCE IS NOT THE SAME AS MEASURING THE PROBE. An earlier
+;; draft of this file recorded every www.mofa.go.jp entry as unreachable, with
+;; a measured 403 from four curl invocations and one independent egress. That
+;; was wrong: MOFA answers 200 with full content to Node's fetch, with or
+;; without a User-Agent, at the same moment curl gets 403 over both HTTP/2 and
+;; HTTP/1.1. The block is on the TLS fingerprint, not on the request -- so the
+;; refusal belonged to the tool, and a curl-based verifier would have written a
+;; permanent false "this authority cannot be checked" into the register while
+;; looking like it had measured something. scripts/verify-facts.cljs uses fetch.
+;;
+;; :source/covers says why an entry is in a MOFA-ODA-tender register. Claims
+;; stop at the level actually checked -- law identity, and for the agency pages
+;; the title and headings read on 2026-08-26. No article text is asserted,
+;; because no article text was read.
+
+[
+ ;; ── MOFA: the authority this repository is named after ─────────────────────
+ {:source/id "mofa.official-site"
+  :source/kind :agency-portal
+  :source/title "外務省"
+  :source/publisher "Ministry of Foreign Affairs of Japan"
+  :source/url "https://www.mofa.go.jp/"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:agency-identity}
+  :source/note "The same URL organization.edn asserts as :official-url. That
+                assertion had no verifier behind it until this file; now it has
+                one."}
+
+ {:source/id "mofa.about"
+  :source/kind :agency-portal
+  :source/title "外務省について"
+  :source/publisher "Ministry of Foreign Affairs of Japan"
+  :source/url "https://www.mofa.go.jp/mofaj/annai/index.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:agency-identity :agency-mandate}}
+
+ {:source/id "mofa.oda-top-ja"
+  :source/kind :policy-portal
+  :source/title "ODA（政府開発援助）トップページ"
+  :source/publisher "Ministry of Foreign Affairs of Japan"
+  :source/url "https://www.mofa.go.jp/mofaj/gaiko/oda/index.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:oda-policy}}
+
+ {:source/id "mofa.oda-top-en"
+  :source/kind :policy-portal
+  :source/title "Japan's ODA (Official Development Assistance)"
+  :source/publisher "Ministry of Foreign Affairs of Japan"
+  :source/url "https://www.mofa.go.jp/policy/oda/index.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:oda-policy}
+  :source/note "English counterpart of mofa.oda-top-ja. Kept as its own entry
+                because the two trees are separately maintained and a claim
+                cited to one is not automatically supported by the other."}
+
+ {:source/id "mofa.development-cooperation-charter"
+  :source/kind :policy-instrument
+  :source/title "開発協力大綱"
+  :source/publisher "Ministry of Foreign Affairs of Japan"
+  :source/url "https://www.mofa.go.jp/mofaj/gaiko/oda/seisaku/taikou_202306.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:oda-policy :eligibility-principles}
+  :source/note "The Development Cooperation Charter -- the ODA policy framework
+                README.md names. Cabinet decision of June 2023; the URL slug
+                taikou_202306 is that edition. A claim about ODA principles
+                cites this, not the ministry's front page."}
+
+ {:source/id "mofa.aid-policy-index"
+  :source/kind :policy-portal
+  :source/title "開発協力大綱等援助政策"
+  :source/publisher "Ministry of Foreign Affairs of Japan"
+  :source/url "https://www.mofa.go.jp/mofaj/gaiko/oda/about/seisaku/index.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:oda-policy}}
+
+ {:source/id "mofa.development-cooperation-policy-framework"
+  :source/kind :policy-portal
+  :source/title "開発協力政策の枠組み"
+  :source/publisher "Ministry of Foreign Affairs of Japan"
+  :source/url "https://www.mofa.go.jp/mofaj/gaiko/oda/about/seisaku/wakugumi.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:oda-policy}}
+
+ {:source/id "mofa.charter-revision"
+  :source/kind :policy-portal
+  :source/title "開発協力大綱の改定"
+  :source/publisher "Ministry of Foreign Affairs of Japan"
+  :source/url "https://www.mofa.go.jp/mofaj/gaiko/oda/about/kaikaku/taikou_kaitei.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:oda-policy}
+  :source/note "Revision record for the Charter. Matters here because an
+                eligibility screen has to know which edition a given tender was
+                issued under."}
+
+ {:source/id "mofa.development-cooperation-white-paper"
+  :source/kind :publication
+  :source/title "White Paper on Development Cooperation / Japan's ODA White Paper"
+  :source/publisher "Ministry of Foreign Affairs of Japan"
+  :source/url "https://www.mofa.go.jp/policy/oda/page_000017.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:oda-policy :public-spend-transparency}}
+
+ ;; ── Statutory basis: MOFA ──────────────────────────────────────────────────
+ {:source/id "jpn.mofa-establishment-act"
+  :source/kind :statute
+  :source/title "外務省設置法"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/411AC0000000094"
+  :source/verify :e-gov-law-id
+  :egov/law-id "411AC0000000094"
+  :egov/law-title "外務省設置法"
+  :egov/law-num "平成十一年法律第九十四号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:agency-identity :agency-mandate}}
+
+ ;; ── Statutory basis: JICA, the implementing agency ─────────────────────────
+ {:source/id "jpn.jica-act"
+  :source/kind :statute
+  :source/title "独立行政法人国際協力機構法"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/414AC0000000136"
+  :source/verify :e-gov-law-id
+  :egov/law-id "414AC0000000136"
+  :egov/law-title "独立行政法人国際協力機構法"
+  :egov/law-num "平成十四年法律第百三十六号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:jica-mandate :oda-implementation}}
+
+ {:source/id "jpn.jica-act-enforcement-order"
+  :source/kind :cabinet-order
+  :source/title "独立行政法人国際協力機構法施行令"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/420CO0000000258"
+  :source/verify :e-gov-law-id
+  :egov/law-id "420CO0000000258"
+  :egov/law-title "独立行政法人国際協力機構法施行令"
+  :egov/law-num "平成二十年政令第二百五十八号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:jica-mandate :oda-implementation}}
+
+ {:source/id "jpn.incorporated-administrative-agency-act"
+  :source/kind :statute
+  :source/title "独立行政法人通則法"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/411AC0000000103"
+  :source/verify :e-gov-law-id
+  :egov/law-id "411AC0000000103"
+  :egov/law-title "独立行政法人通則法"
+  :egov/law-num "平成十一年法律第百三号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:jica-mandate :agency-governance}
+  :source/note "General law over incorporated administrative agencies. JICA is
+                one, so its contracting sits under this as well as its own act."}
+
+ ;; ── Government contracting and competitive tendering ───────────────────────
+ {:source/id "jpn.accounts-act"
+  :source/kind :statute
+  :source/title "会計法"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/322AC0000000035"
+  :source/verify :e-gov-law-id
+  :egov/law-id "322AC0000000035"
+  :egov/law-title "会計法"
+  :egov/law-num "昭和二十二年法律第三十五号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-procedure :state-contracting}}
+
+ {:source/id "jpn.budget-settlement-accounts-order"
+  :source/kind :imperial-order
+  :source/title "予算決算及び会計令"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/322IO0000000165"
+  :source/verify :e-gov-law-id
+  :egov/law-id "322IO0000000165"
+  :egov/law-title "予算決算及び会計令"
+  :egov/law-num "昭和二十二年勅令第百六十五号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-procedure :tender-eligibility}
+  :source/note "The id is 322IO0000000165. 322CO0000000165 -- the same number
+                with the 政令 prefix -- does not exist, and e-Gov serves it as
+                HTTP 200 anyway. See the :e-gov-law-id note in the header."}
+
+ {:source/id "jpn.gpa-special-procurement-order"
+  :source/kind :cabinet-order
+  :source/title "国の物品等又は特定役務の調達手続の特例を定める政令"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/355CO0000000300"
+  :source/verify :e-gov-law-id
+  :egov/law-id "355CO0000000300"
+  :egov/law-title "国の物品等又は特定役務の調達手続の特例を定める政令"
+  :egov/law-num "昭和五十五年政令第三百号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-procedure :covered-procurement}
+  :source/note "Special procedure for procurement covered by Japan's WTO
+                Government Procurement Agreement commitments."}
+
+ {:source/id "jpn.public-works-tender-adequacy-act"
+  :source/kind :statute
+  :source/title "公共工事の入札及び契約の適正化の促進に関する法律"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/412AC0000000127"
+  :source/verify :e-gov-law-id
+  :egov/law-id "412AC0000000127"
+  :egov/law-title "公共工事の入札及び契約の適正化の促進に関する法律"
+  :egov/law-num "平成十二年法律第百二十七号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-procedure :tender-integrity}}
+
+ ;; ── Integrity: what disqualifies a bidder ──────────────────────────────────
+ {:source/id "jpn.unfair-competition-prevention-act"
+  :source/kind :statute
+  :source/title "不正競争防止法"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/405AC0000000047"
+  :source/verify :e-gov-law-id
+  :egov/law-id "405AC0000000047"
+  :egov/law-title "不正競争防止法"
+  :egov/law-num "平成五年法律第四十七号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-integrity :foreign-bribery}
+  :source/note
+  "Carries Japan's foreign public official bribery offence, the integrity rule
+   with the most direct bite on tenders performed abroad. Measured 2026-08-26:
+   e-Gov's `laws?law_id=` endpoint returns a PreviousEnforced revision for this
+   law by default, while `law_revisions` shows a CurrentEnforced one
+   (405AC0000000047_20260521_507AC0000000039). That is why the verifier asserts
+   law identity -- title and law number -- and NOT current_revision_status:
+   asserting the status would fail a real citation for a reason that has
+   nothing to do with whether it is real."}
+
+ {:source/id "jpn.subsidy-budget-execution-act"
+  :source/kind :statute
+  :source/title "補助金等に係る予算の執行の適正化に関する法律"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/330AC0000000179"
+  :source/verify :e-gov-law-id
+  :egov/law-id "330AC0000000179"
+  :egov/law-title "補助金等に係る予算の執行の適正化に関する法律"
+  :egov/law-num "昭和三十年法律第百七十九号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:grant-aid :tender-integrity}}
+
+ {:source/id "jpn.foreign-exchange-and-foreign-trade-act"
+  :source/kind :statute
+  :source/title "外国為替及び外国貿易法"
+  :source/publisher "e-Gov (Digital Agency)"
+  :source/url "https://laws.e-gov.go.jp/law/324AC0000000228"
+  :source/verify :e-gov-law-id
+  :egov/law-id "324AC0000000228"
+  :egov/law-title "外国為替及び外国貿易法"
+  :egov/law-num "昭和二十四年法律第二百二十八号"
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:cross-border-payment :export-control}
+  :source/note "Cross-border payment and export-control screening an
+                international-development contract has to clear."}
+
+ ;; ── JICA's own tender rules (no API; fetched) ──────────────────────────────
+ {:source/id "jica.procurement-guidelines-index"
+  :source/kind :agency-rule
+  :source/title "調達ガイドライン、様式"
+  :source/publisher "JICA"
+  :source/url "https://www.jica.go.jp/about/announce/manual/index.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-procedure}}
+
+ {:source/id "jica.consultant-contract-guidelines"
+  :source/kind :agency-rule
+  :source/title "コンサルタント等契約　関連ガイドライン／個別制度の解説"
+  :source/publisher "JICA"
+  :source/url "https://www.jica.go.jp/about/announce/manual/guideline/consultant/index.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-eligibility :tender-integrity}
+  :source/note
+  "Read 2026-08-26: carries 競争参加資格確認申請書の提出方法 under 応募・選定,
+   and 独立行政法人国際協力機構関係者の倫理等ガイドライン under 契約実施中.
+   Those two headings are the eligibility-screening and integrity surfaces this
+   repository's governor gates on."}
+
+ {:source/id "jica.oda-loan-procurement-guidelines"
+  :source/kind :agency-rule
+  :source/title "円借款事業の調達およびコンサルタント雇用ガイドライン・標準入札書類等"
+  :source/publisher "JICA"
+  :source/url "https://www.jica.go.jp/activities/schemes/finance_co/procedure/guideline/index.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-procedure :oda-loan}
+  :source/note
+  "Read 2026-08-26: lists handbook editions 2023-10, 2012-04, 2009-03 and
+   1999-10, a 1997-12 guideline-only edition, and the 2021-11 評価手順ガイド
+   pair. A tender is screened against the edition its own notice names, so the
+   older editions here are live rules, not history."}
+
+ {:source/id "jica.procurement-application-procedure"
+  :source/kind :agency-rule
+  :source/title "JICAの行う調達業務・応募手続き"
+  :source/publisher "JICA"
+  :source/url "https://www.jica.go.jp/about/announce/beginner/application/index.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-procedure :tender-eligibility}
+  :source/note
+  "Read 2026-08-26: headings JICAの調達の種類 / 調達方式について /
+   公告・公示情報及び各種申請様式について. It does NOT set out a single
+   qualification register and does not reference 全省庁統一資格 -- it leaves the
+   criteria to each notice. So eligibility cannot be answered from this page
+   alone; the per-notice document is the authority."}
+
+ {:source/id "jica.electronic-bidding-registration"
+  :source/kind :agency-rule
+  :source/title "電子入札システムの利用者登録について"
+  :source/publisher "JICA"
+  :source/url "https://www.jica.go.jp/about/announce/information/common/2020/20200817.html"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-procedure :bidder-registration}}
+
+ {:source/id "jica.tender-notices"
+  :source/kind :notice-feed
+  :source/title "コンサルタント等契約案件公示（業務実施契約）"
+  :source/publisher "JICA"
+  :source/url "https://www2.jica.go.jp/ja/announce/index.php?contract=1"
+  :source/verify :http-2xx
+  :source/http-status 200
+  :source/retrieved-at "2026-08-26"
+  :source/covers #{:tender-notice}
+  :source/note "Live notice list. Per jica.procurement-application-procedure,
+                the per-notice document -- not any page in this register -- is
+                what states a given tender's eligibility criteria."}
+
+ ;; ── Coverage, stated so that a green run is not read as full coverage ──────
+ {:source/id "register.coverage"
+  :source/kind :coverage
+  :coverage/entries 26
+  :coverage/by-verify {:http-2xx 15 :e-gov-law-id 11}
+  :coverage/publishers #{"Ministry of Foreign Affairs of Japan" "JICA"
+                         "e-Gov (Digital Agency)"}
+  :source/retrieved-at "2026-08-26"
+  :source/note
+  "26 sources, all machine-checkable, and the verifier checks all 26 or refuses
+   to report a pass. What this register does NOT cover, so that its absence is
+   not read as a measured zero: no per-tender notice (jica.tender-notices is
+   the list, not the notices); no treaty text for the WTO Government
+   Procurement Agreement, only Japan's implementing order; no ODA country
+   assistance policies; no article-level text from any statute -- every law
+   entry here is verified at the level of identity, not content. A claim that
+   needs an article needs a human to read it."}
+]
