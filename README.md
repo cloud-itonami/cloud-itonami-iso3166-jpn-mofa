@@ -47,7 +47,44 @@ set — it always requires human sign-off (mirrors `cloud-itonami-M6910`'s
 - **Not legal or tax advice.** Every regulatory claim must cite the
   official MOFA source and route final filings to
   Japan-licensed counsel or a registered agent where the law requires
-  licensed representation.
+  licensed representation. The sources it may cite are enumerated in
+  [`facts.edn`](facts.edn) — see below.
+
+## Regulatory source register
+
+[`facts.edn`](facts.edn) is the list of sources a claim in this repository is
+allowed to cite: MOFA's ODA policy pages including the 開発協力大綱, the
+statutes and orders behind MOFA, JICA and competitive tendering, and JICA's own
+procurement rules. It is tx-data, so it loads like every other EDN corpus here:
+
+```clojure
+(d/transact conn (edn/read-string (slurp "facts.edn")))
+```
+
+A source not in the table has no spec-basis — extend the table, never invent an
+id or a URL. Re-check every entry against the live authority with:
+
+```bash
+nbb scripts/verify-facts.cljs      # 0 = all verified, 1 = a source is wrong,
+                                   # 2 = the run could not answer (not a pass)
+```
+
+Two things worth knowing before trusting a green run, both measured 2026-08-26
+and both recorded in the file:
+
+- **`laws.e-gov.go.jp` answers HTTP 200 for `/law/<anything>`**, including law
+  ids that do not exist, and renders "not found" client-side. So the verifier
+  never uses HTTP status for a statute — it resolves the id through the e-Gov
+  law API and requires the title and law number to match. It proves that branch
+  still discriminates, against an id that must not resolve, before it reports
+  anything. A status-only check would have passed `322CO0000000165`, which this
+  register briefly cited for 予算決算及び会計令 and which is not a law
+  (the correct id is `322IO0000000165`; 勅令 is `IO`, not `CO`).
+- **`www.mofa.go.jp` answers 403 to `curl`** over both HTTP/2 and HTTP/1.1, with
+  or without a browser User-Agent, while answering 200 with full content to
+  `fetch` at the same moment — the block is on the TLS fingerprint. A
+  curl-based verifier would record this repository's own naming authority as
+  permanently unreachable, and would look like it had measured that.
 
 ## Capability layer
 
