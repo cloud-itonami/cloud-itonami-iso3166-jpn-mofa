@@ -65,7 +65,7 @@ A source not in the table has no spec-basis — extend the table, never invent a
 id or a URL. Re-check every entry against the live authority with:
 
 ```bash
-nbb scripts/verify-facts.cljk      # 0 = all verified, 1 = a source is wrong,
+kbb --backend sci scripts/verify-facts.cljk      # 0 = all verified, 1 = a source is wrong,
                                    # 2 = the run could not answer (not a pass)
 ```
 
