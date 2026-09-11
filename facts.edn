@@ -12,7 +12,7 @@
 ;; has NO spec-basis for this repository -- extend the table, never invent an
 ;; id or a URL.
 ;;
-;; VERIFIED BY `nbb scripts/verify-facts.cljs`, which re-fetches every entry.
+;; VERIFIED BY `nbb scripts/verify-facts.cljk`, which re-fetches every entry.
 ;; Each carries a :source/verify tag naming WHICH check establishes it. The two
 ;; checks are not interchangeable, and the reason is the main thing this file
 ;; has to teach:
@@ -43,7 +43,7 @@
 ;; HTTP/1.1. The block is on the TLS fingerprint, not on the request -- so the
 ;; refusal belonged to the tool, and a curl-based verifier would have written a
 ;; permanent false "this authority cannot be checked" into the register while
-;; looking like it had measured something. scripts/verify-facts.cljs uses fetch.
+;; looking like it had measured something. scripts/verify-facts.cljk uses fetch.
 ;;
 ;; :source/covers says why an entry is in a MOFA-ODA-tender register. Claims
 ;; stop at the level actually checked -- law identity, and for the agency pages
